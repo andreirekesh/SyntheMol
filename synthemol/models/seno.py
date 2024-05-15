@@ -22,20 +22,24 @@ class SenoProxy():
         self.log_dir = params.log_dir
 
     def __call__(self, smiles: str) -> np.array:
-        with pipes():
-            scores = (
-                predict(
-                    self.model,
-                    [smiles],
-                    batch_size=self.batch_size,
-                    gpus=1,
-                )
-                * 100
-            ).tolist()
-
-            with open(os.path.join(self.log_dir, "visited.txt"), 'a') as file:
-                # Write each molecule and its score to the file
-                for molecule, score in zip([smiles], scores):
-                    file.write(f"{molecule}, {score}\n")
+        try:
+            with pipes():
+                scores = (
+                    predict(
+                        self.model,
+                        [smiles],
+                        batch_size=self.batch_size,
+                        gpus=1,
+                    )
+                    * 100
+                ).tolist()
+        except Exception as e:
+            print(f"GNEProp Score Exception: {e}")
+            scores = [0]
+            
+        with open(os.path.join(self.log_dir, "visited.txt"), 'a') as file:
+            # Write each molecule and its score to the file
+            for molecule, score in zip([smiles], scores):
+                file.write(f"{molecule}, {score}\n")
 
         return scores[0]
