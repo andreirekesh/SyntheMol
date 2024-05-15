@@ -22,7 +22,8 @@ from synthemol.models.quickvina import GPUDockingScoreProxy
 from synthemol.models.quickvina import Parameters as QVParameters
 from synthemol.models.seh import SEHProxy
 from synthemol.models.seh import Parameters as SEHParameters
-
+from synthemol.models.seno import SenoProxy
+from synthemol.models.seno import Parameters as SenoParameters
 
 def create_model_scoring_fn(
         model_path: Path,
@@ -40,24 +41,37 @@ def create_model_scoring_fn(
     """
     if model_type=="docking":
         params = QVParameters()
-        return GPUDockingScoreProxy(params=params).__call__
+        def model_scorer(smiles: str) -> float:
+            return GPUDockingScoreProxy(params=params).__call__(
+                smiles=smiles
+            )
 
     if model_type=="seh":
         params = SEHParameters()
-        return SEHProxy(params=params).__call__
+        def model_scorer(smiles: str) -> float:
+            return SEHProxy(params=params).__call__(
+                smiles=smiles
+            )
+
+    if model_type=="seno":
+        params = SenoParameters()
+        def model_scorer(smiles: str) -> float:
+            return SenoProxy(params=params).__call__(
+                smiles=smiles
+            )
 
     # Check compatibility of model and fingerprint type
-    if model_type != 'chemprop' and fingerprint_type is None:
+    if model_type not in ['chemprop', 'seh', 'docking', 'seno'] and fingerprint_type is None:
         raise ValueError('Must define fingerprint_type if using a scikit-learn model.')
 
     # Get model paths
-    if model_path.is_dir():
-        model_paths = list(model_path.glob('**/*.pt' if model_type == 'chemprop' else '**/*.pkl'))
-
-        if len(model_paths) == 0:
-            raise ValueError(f'Could not find any models in directory {model_path}.')
-    else:
-        model_paths = [model_path]
+    #if model_path.is_dir():
+    #    model_paths = list(model_path.glob('**/*.pt' if model_type == 'chemprop' else '**/*.pkl'))
+    #
+    #    if len(model_paths) == 0:
+    #        raise ValueError(f'Could not find any models in directory {model_path}.')
+    #else:
+    #    model_paths = [model_path]
 
     # Load models and set up scoring function
     if model_type == 'chemprop':
@@ -76,7 +90,7 @@ def create_model_scoring_fn(
                 fingerprint=fingerprint,
                 scalers=scalers
             )
-    else:
+    elif model_type == 'sklearn':
         # Load scikit-learn models
         models = [sklearn_load(model_path=model_path) for model_path in model_paths]
 
@@ -99,8 +113,7 @@ def create_model_scoring_fn(
             fingerprint = None
 
         return model_scorer(
-            smiles=smiles,
-            fingerprint=fingerprint
+            smiles=smiles
         )
 
     return model_scoring_fn

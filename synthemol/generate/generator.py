@@ -177,7 +177,6 @@ class Generator:
         """
         # Get all reactions that are possible for the molecules in the Node
         matching_reactions = self.get_reactions_for_molecules(molecules=node.molecules)
-
         # Run all possible reactions and create Nodes for the products
         product_nodes = []
         product_set = set()
@@ -208,7 +207,7 @@ class Generator:
                     for molecule in molecules
                 ),
             }
-
+            print(products)
             product_nodes += [
                 Node(
                     explore_weight=self.explore_weight,
@@ -320,38 +319,33 @@ class Generator:
         else:
             # Expand the node both by running reactions with the current molecules and adding new building blocks
             child_nodes = self.get_child_nodes(node=node)
-
             # Check the node map and merge with an existing node if available
             child_nodes = [self.node_map.get(new_node, new_node) for new_node in child_nodes]
-
             # Add nodes with complete molecules to the node map
             for child_node in child_nodes:
                 if child_node.num_molecules == 1 and child_node not in self.node_map:
                     child_node.node_id = len(self.node_map)
                     self.node_map[child_node] = child_node
                     self.building_block_counts.update(child_node.unique_building_block_ids)
-
             # Save the number of children in order to maintain a total node count
             node.num_children = len(child_nodes)
-
             # If storing nodes, store the children
             if self.store_nodes:
                 self.node_to_children[node] = child_nodes
-
         # If no new nodes were generated, return the current node's value
         if len(child_nodes) == 0:
             if node.num_molecules == 1:
                 return node.P
             else:
                 raise ValueError('Failed to expand a partially expanded node.')
-
         # Select a node based on the MCTS score
         total_visit_count = sum(child_node.N for child_node in child_nodes)
+        
+
         selected_node = self.optimization_fn(
             child_nodes,
             key=partial(self.compute_mcts_score, total_visit_count=total_visit_count)
         )
-
         # Check the node map and merge with an existing node if available
         if selected_node in self.node_map:
             selected_node = self.node_map[selected_node]

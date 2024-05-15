@@ -14,6 +14,7 @@ from rdkit.Chem import AllChem
 from wurlitzer import pipes
 from pydantic import Field
 from pydantic.dataclasses import dataclass
+import openbabel.pybel as pybel
 
 
 @dataclass
@@ -142,10 +143,13 @@ class GPUDockingScoreProxy():
                     mol = Chem.AddHs(mol)
                     AllChem.EmbedMolecule(mol, AllChem.ETKDG())
                     AllChem.UFFOptimizeMolecule(mol)
-                    preparator = MoleculePreparation()
-                    mol_setups = preparator.prepare(mol)
-                    setup = mol_setups[0]
-                    pdbqt_string, _, _ = PDBQTWriterLegacy.write_string(setup)
+                    pdb_block = Chem.rdmolfiles.MolToPDBBlock(mol)
+                    obmol = pybel.readstring("pdb", pdb_block)
+                    pdbqt_string = obmol.write("pdbqt")
+                    #preparator = MoleculePreparation()
+                    #mol_setups = preparator.prepare(mol)
+                    #setup = mol_setups[0]
+                    #pdbqt_string, _, _ = PDBQTWriterLegacy.write_string(setup)
                 except Exception as e:
                     print(f"Failed embedding attempt #{attempt} with error: '{e}'.")
 
@@ -176,7 +180,6 @@ class GPUDockingScoreProxy():
 
         if not Path(scores_path).exists():
             print(f"Failed score loading attempt #{n}: {result.stderr}")
-
             debug_path = Path(__file__).parents[3] / "debug" / ("%08x" % random.getrandbits(32))
 
             print(f"Saving debug files into {debug_path}...")
@@ -204,25 +207,17 @@ class GPUDockingScoreProxy():
 
         return scores
 
-    def reward_transform(self, rewards):
-        return rewards
-
-
-    def __call__(self, smiles: List[str]) -> np.array:
+    def __call__(self, smiles: str) -> np.array:
+        smiles = Chem.MolToSmiles(Chem.MolFromSmiles(smiles))
         for attempt in range(1, self.docking_attempts + 1):
-            scores = self._docking_attempt(smiles, attempt)
+            scores = self._docking_attempt([smiles], attempt)
             if scores is not None:
                 with open(os.path.join(self.log_dir, "visited.txt"), 'a') as file:
                     # Write each molecule and its score to the file
-                    for molecule, score in zip(smiles, scores):
+                    for molecule, score in zip([smiles], scores):
                         file.write(f"{molecule}, {score}\n")
                 
-                raw_scores = -1 * np.array(scores, dtype=float)
-                transformed_scores = self.reward_transform(raw_scores)
-
-                print(f"Proxy Mean: {raw_scores.mean()}, Proxy Max: {raw_scores.max()}, Mean Reward: {transformed_scores.mean()}, Max Reward: {transformed_scores.max()}")
-                return transformed_scores
+                score = scores[0] * -1
+                return score
         
-        scores = [self.failed_score] * len(smiles)
-        print(f"Proxy Mean: {np.array(scores).mean()}, Proxy Max: {np.array(scores).max()}")
-        return np.array(scores, dtype=float)
+        return 0
